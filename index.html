@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jarvis</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #07070f; --surface: #0d0d1a; --border: #1a1a30;
+      --accent: #7b61ff; --accent2: #00e5ff; --green: #00ff88;
+      --red: #ff4466; --text: #e0e0f0; --muted: #44445a;
+      --mono: 'Space Mono', monospace; --display: 'Syne', sans-serif;
+    }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--mono); display: flex; flex-direction: column; }
+
+    header { flex-shrink:0; height:56px; display:flex; align-items:center; justify-content:space-between; padding:0 20px; border-bottom:1px solid var(--border); background:var(--surface); z-index:20; }
+    .logo { font-family:var(--display); font-weight:800; font-size:18px; letter-spacing:5px; text-transform:uppercase; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .hright { display:flex; align-items:center; gap:10px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; transition:all 0.3s; }
+    .dot.on { background:var(--green); box-shadow:0 0 8px var(--green); }
+    .hbtn { font-family:var(--mono); font-size:10px; padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--muted); cursor:pointer; border-radius:3px; letter-spacing:1px; text-transform:uppercase; transition:all 0.2s; }
+    .hbtn:hover { border-color:var(--accent); color:var(--accent); }
+    .hbtn.on { border-color:var(--green); color:var(--green); }
+
+    #wake-status { font-size:9px; color:var(--muted); letter-spacing:1px; display:flex; align-items:center; gap:6px; }
+    #wake-dot { width:6px; height:6px; border-radius:50%; background:var(--muted); flex-shrink:0; transition:all 0.3s; }
+    #wake-dot.listening { background:var(--accent); box-shadow:0 0 6px var(--accent); animation:softpulse 2s infinite; }
+    #wake-dot.active { background:var(--green); box-shadow:0 0 8px var(--green); }
+    @keyframes softpulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .body-wrap { flex:1; display:flex; overflow:hidden; min-height:0; }
+
+    aside { width:260px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+    .s-block { padding:14px; border-bottom:1px solid var(--border); flex-shrink:0; }
+    .s-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+    #cal-list { display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto; }
+    .cal-ev { background:rgba(123,97,255,0.07); border-left:2px solid var(--accent); padding:7px 9px; border-radius:0 3px 3px 0; }
+    .cal-ev-title { font-size:10px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cal-ev-time { font-size:9px; color:var(--muted); margin-top:2px; }
+    .notes-wrap { flex:1; overflow:hidden; display:flex; flex-direction:column; padding:14px; min-height:0; }
+    #notes-list { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; min-height:0; }
+    .note-it { background:rgba(0,229,255,0.05); border-left:2px solid var(--accent2); padding:7px 9px; border-radius:0 3px 3px 0; position:relative; }
+    .note-txt { font-size:10px; color:var(--text); line-height:1.5; padding-right:16px; }
+    .note-ts { font-size:9px; color:var(--muted); margin-top:3px; }
+    .note-del { position:absolute; top:5px; right:6px; background:none; border:none; color:var(--muted); cursor:pointer; font-size:11px; opacity:0; transition:opacity 0.2s; }
+    .note-it:hover .note-del { opacity:1; }
+    .muted-txt { font-size:10px; color:var(--muted); font-style:italic; }
+
+    #timers-panel { padding:14px; border-bottom:1px solid var(--border); flex-shrink:0; display:none; }
+    #timers-panel.show { display:block; }
+    #timers-list { display:flex; flex-direction:column; gap:6px; }
+    .timer-it { background:rgba(255,68,102,0.07); border-left:2px solid var(--red); padding:7px 9px; border-radius:0 3px 3px 0; display:flex; justify-content:space-between; align-items:center; }
+    .timer-label { font-size:10px; color:var(--text); }
+    .timer-time { font-size:11px; color:var(--red); font-weight:700; }
+
+    .main-panel { flex:1; display:flex; flex-direction:column; overflow:hidden; position:relative; min-width:0; }
+    #globe-wrap { position:absolute; inset:0; z-index:0; pointer-events:none; }
+    #globe-wrap canvas { width:100%!important; height:100%!important; }
+
+    #speak-label { position:absolute; bottom:90px; left:50%; transform:translateX(-50%); font-family:var(--display); font-size:10px; letter-spacing:6px; text-transform:uppercase; color:var(--accent2); opacity:0; transition:opacity 0.4s; z-index:6; pointer-events:none; text-shadow:0 0 16px var(--accent2); white-space:nowrap; }
+    #speak-label.show { opacity:0.85; }
+
+    #wake-overlay { position:absolute; top:50%; left:50%; transform:translate(-50%,-60%); text-align:center; z-index:6; pointer-events:none; opacity:0; transition:opacity 0.4s; }
+    #wake-overlay.show { opacity:1; }
+    #wake-overlay .wake-text { font-family:var(--display); font-size:13px; letter-spacing:8px; text-transform:uppercase; color:var(--accent); text-shadow:0 0 20px var(--accent); }
+    #wake-overlay .wake-sub { font-size:10px; color:var(--muted); letter-spacing:3px; margin-top:8px; }
+
+    #chat-scroll { flex:1; overflow-y:auto; padding:20px 20px 0 20px; display:flex; flex-direction:column; gap:14px; position:relative; z-index:5; min-height:0; }
+    #chat-scroll::-webkit-scrollbar { width:4px; }
+    #chat-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+    .empty { text-align:center; color:var(--muted); font-size:11px; margin-top:60px; line-height:2; }
+
+    .msg { max-width:68%; animation:up 0.25s ease; }
+    @keyframes up { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    .msg.user { align-self:flex-end; } .msg.bot { align-self:flex-start; }
+    .msg-who { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+    .msg.user .msg-who { text-align:right; }
+    .bubble { padding:10px 14px; font-size:12px; line-height:1.65; }
+    .msg.user .bubble { background:var(--accent); color:#fff; border-radius:8px 8px 2px 8px; }
+    .msg.bot .bubble { background:rgba(13,13,26,0.88); backdrop-filter:blur(10px); border:1px solid var(--border); color:var(--text); border-radius:8px 8px 8px 2px; }
+
+    .typing { display:flex; gap:4px; padding:12px 14px; align-items:center; }
+    .td { width:5px; height:5px; border-radius:50%; background:var(--accent); animation:tb 1.2s infinite; }
+    .td:nth-child(2){animation-delay:.2s} .td:nth-child(3){animation-delay:.4s}
+    @keyframes tb { 0%,80%,100%{transform:translateY(0);opacity:.4} 40%{transform:translateY(-5px);opacity:1} }
+
+    .input-bar { flex-shrink:0; padding:14px 16px; border-top:1px solid var(--border); background:rgba(13,13,26,0.95); backdrop-filter:blur(10px); display:flex; align-items:center; gap:10px; z-index:10; }
+    .mic-btn { width:46px; height:46px; border-radius:50%; border:2px solid var(--accent); background:transparent; color:var(--accent); font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.2s; }
+    .mic-btn:hover { background:rgba(123,97,255,0.12); }
+    .mic-btn.active { background:var(--red); border-color:var(--red); color:#fff; animation:mpulse 1s infinite; }
+    @keyframes mpulse { 0%,100%{box-shadow:0 0 0 0 rgba(255,68,102,0.4)} 50%{box-shadow:0 0 0 8px rgba(255,68,102,0)} }
+    #txt { flex:1; background:rgba(7,7,15,0.8); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12px; padding:12px 14px; border-radius:6px; outline:none; min-width:0; }
+    #txt:focus { border-color:var(--accent); }
+    #txt::placeholder { color:var(--muted); }
+    .stop-btn { display:none; width:46px; height:46px; border-radius:6px; border:1px solid var(--accent2); background:transparent; color:var(--accent2); font-size:11px; cursor:pointer; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.2s; text-align:center; }
+    .stop-btn.show { display:flex; }
+    .send-btn { width:46px; height:46px; border-radius:6px; border:none; background:var(--accent); color:#fff; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:opacity 0.2s; }
+    .send-btn:hover { opacity:0.82; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Jarvis</div>
+  <div class="hright">
+    <div id="wake-status">
+      <div id="wake-dot"></div>
+      <span id="wake-label">wake word off</span>
+    </div>
+    <div class="dot" id="g-dot"></div>
+    <button class="hbtn" id="g-btn" onclick="connectGoogle()">Connect Google</button>
+    <button class="hbtn" id="wake-toggle" onclick="toggleWakeWord()">Enable Wake Word</button>
+    <button class="hbtn" onclick="clearChat()">Clear</button>
+  </div>
+</header>
+
+<div class="body-wrap">
+  <aside>
+    <div class="s-block">
+      <div class="s-label">📅 This Week</div>
+      <div id="cal-list"><div class="muted-txt">Connect Google to see events</div></div>
+    </div>
+    <div id="timers-panel">
+      <div class="s-label">⏱ Timers</div>
+      <div id="timers-list"></div>
+    </div>
+    <div class="notes-wrap">
+      <div class="s-label">📝 Notes</div>
+      <div id="notes-list"><div class="muted-txt">Say "note that..." to save</div></div>
+    </div>
+  </aside>
+
+  <div class="main-panel">
+    <div id="globe-wrap"></div>
+    <div id="speak-label">Speaking</div>
+    <div id="wake-overlay">
+      <div class="wake-text">Listening...</div>
+      <div class="wake-sub">Say your command</div>
+    </div>
+
+    <div id="chat-scroll">
+      <div class="empty">
+        🎙️ Say <span style="color:var(--accent)">"Hello Jarvis"</span> or hit the mic<br/>
+        or just type below<br/><br/>
+        <span style="font-size:9px;opacity:0.6">"open Spotify" &nbsp;·&nbsp; "set a 10 minute timer" &nbsp;·&nbsp; "weather in Delhi" &nbsp;·&nbsp; "note that..."</span>
+      </div>
+    </div>
+
+    <div class="input-bar">
+      <button class="mic-btn" id="mic-btn" onclick="manualMic()">🎤</button>
+      <input type="text" id="txt" placeholder='Say "Hello Jarvis" or type here...' onkeydown="onKey(event)" />
+      <button class="stop-btn" id="stop-btn" onclick="stopSpeaking()">⏹ Stop</button>
+      <button class="send-btn" onclick="doSend()">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:3000';
+
+// ── THREE.JS GLOBE ────────────────────────────────────────────
+const wrap = document.getElementById('globe-wrap');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+renderer.setClearColor(0x000000, 0);
+wrap.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 1000);
+camera.position.z = 2.8;
+
+const PARTICLE_COUNT = 3000;
+const geo = new THREE.BufferGeometry();
+const positions = new Float32Array(PARTICLE_COUNT * 3);
+const colors = new Float32Array(PARTICLE_COUNT * 3);
+const c1 = new THREE.Color(0x7b61ff);
+const c2 = new THREE.Color(0x00e5ff);
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const phi = Math.acos(1 - 2 * (i + 0.5) / PARTICLE_COUNT);
+  const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+  const r = 1.0 + (Math.random() - 0.5) * 0.035;
+  positions[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+  positions[i*3+1] = r * Math.cos(phi);
+  positions[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+  const t = Math.random() * 0.4;
+  const col = c1.clone().lerp(c2, t);
+  colors[i*3] = col.r; colors[i*3+1] = col.g; colors[i*3+2] = col.b;
+}
+
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const mat = new THREE.PointsMaterial({ size: 0.016, vertexColors: true, transparent: true, opacity: 0.7, sizeAttenuation: true, depthWrite: false });
+const globe = new THREE.Points(geo, mat);
+scene.add(globe);
+
+const wireMat = new THREE.MeshBasicMaterial({ color: 0x7b61ff, wireframe: true, transparent: true, opacity: 0.055 });
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.0, 18, 12), wireMat));
+
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.15 });
+const ring = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.002, 8, 120), ringMat);
+scene.add(ring);
+
+const glowC = document.createElement('canvas'); glowC.width = glowC.height = 256;
+const gc2 = glowC.getContext('2d');
+const gr = gc2.createRadialGradient(128,128,0,128,128,128);
+gr.addColorStop(0,'rgba(123,97,255,0.35)'); gr.addColorStop(0.4,'rgba(0,229,255,0.08)'); gr.addColorStop(1,'rgba(0,0,0,0)');
+gc2.fillStyle = gr; gc2.fillRect(0,0,256,256);
+const glowMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(glowC), transparent: true, opacity: 0.5, depthWrite: false });
+const glowSprite = new THREE.Sprite(glowMat); glowSprite.scale.set(3.5,3.5,1);
+scene.add(glowSprite);
+
+let speakT = 0, wakeT = 0, globeSpeaking = false, globeWake = false;
+
+function animateGlobe() {
+  requestAnimationFrame(animateGlobe);
+  speakT += ((globeSpeaking ? 1 : 0) - speakT) * 0.05;
+  wakeT  += ((globeWake    ? 1 : 0) - wakeT)  * 0.05;
+  const intensity = Math.max(speakT, wakeT);
+  globe.rotation.y += 0.003 + intensity * 0.01;
+  globe.rotation.x += 0.001;
+  const pulse = 1 + intensity * 0.07 * Math.sin(Date.now() * 0.005);
+  globe.scale.setScalar(pulse); ring.scale.setScalar(pulse);
+  const ca = geo.attributes.color.array;
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const t = intensity * (Math.sin(Date.now() * 0.001 + i * 0.1) * 0.5 + 0.5);
+    const target = c1.clone().lerp(c2, t);
+    ca[i*3]   += (target.r - ca[i*3])   * 0.015;
+    ca[i*3+1] += (target.g - ca[i*3+1]) * 0.015;
+    ca[i*3+2] += (target.b - ca[i*3+2]) * 0.015;
+  }
+  geo.attributes.color.needsUpdate = true;
+  mat.opacity = 0.5 + intensity * 0.4;
+  wireMat.opacity = 0.055 + intensity * 0.1;
+  glowMat.opacity = 0.4 + intensity * 0.5;
+  glowSprite.scale.setScalar(3.5 + intensity * 1.5);
+  renderer.render(scene, camera);
+}
+animateGlobe();
+
+window.addEventListener('resize', () => {
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  camera.aspect = wrap.clientWidth / wrap.clientHeight;
+  camera.updateProjectionMatrix();
+});
+
+function setGlobeSpeaking(val) {
+  globeSpeaking = val;
+  document.getElementById('speak-label').classList.toggle('show', val);
+  document.getElementById('stop-btn').classList.toggle('show', val);
+}
+function setGlobeWake(val) {
+  globeWake = val;
+  document.getElementById('wake-overlay').classList.toggle('show', val);
+}
+
+// ── STATE ─────────────────────────────────────────────────────
+let calendarData = [], notesData = [], weatherData = null;
+let isSpeaking = false, isProcessing = false;
+let wakeWordEnabled = false, wakeActive = false;
+let wakeRecog = null;
+let timers = {};
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+// ── WAKE WORD ─────────────────────────────────────────────────
+function toggleWakeWord() {
+  wakeWordEnabled ? stopWakeWord() : startWakeWord();
+}
+
+function startWakeWord() {
+  if (!SR) { alert('Chrome required.'); return; }
+  wakeWordEnabled = true;
+  document.getElementById('wake-toggle').textContent = 'Disable Wake Word';
+  document.getElementById('wake-toggle').classList.add('on');
+  spawnWakeListener();
+}
+
+function stopWakeWord() {
+  wakeWordEnabled = false;
+  wakeActive = false;
+  if (wakeRecog) { try { wakeRecog.stop(); } catch(e) {} wakeRecog = null; }
+  document.getElementById('wake-toggle').textContent = 'Enable Wake Word';
+  document.getElementById('wake-toggle').classList.remove('on');
+  document.getElementById('wake-dot').className = '';
+  document.getElementById('wake-label').textContent = 'wake word off';
+  setGlobeWake(false);
+}
+
+// Spawn a fresh recognition instance — always restarts itself
+function spawnWakeListener() {
+  if (!wakeWordEnabled || wakeActive || isProcessing) return;
+
+  // kill old one cleanly
+  if (wakeRecog) { try { wakeRecog.abort(); } catch(e) {} wakeRecog = null; }
+
+  wakeRecog = new SR();
+  wakeRecog.continuous = false; // single-shot, restart loop is more reliable than continuous
+  wakeRecog.interimResults = true;
+  wakeRecog.lang = 'en-IN';
+
+  wakeRecog.onstart = () => {
+    if (!wakeActive) {
+      document.getElementById('wake-dot').classList.add('listening');
+      document.getElementById('wake-label').textContent = 'listening...';
+    }
+  };
+
+  wakeRecog.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const text = e.results[i][0].transcript.toLowerCase().trim();
+      const triggered = ['hello jarvis','hey jarvis','hi jarvis','ok jarvis','yo jarvis','jarvis'].some(w => text.includes(w));
+      if (triggered && !wakeActive && !isProcessing) {
+        onWakeTriggered();
+        return;
+      }
+    }
+  };
+
+  wakeRecog.onend = () => {
+    // always restart unless disabled or wake was triggered
+    if (wakeWordEnabled && !wakeActive) {
+      setTimeout(spawnWakeListener, 200);
+    }
+  };
+
+  wakeRecog.onerror = (e) => {
+    if (e.error === 'aborted') return;
+    setTimeout(() => {
+      if (wakeWordEnabled && !wakeActive) spawnWakeListener();
+    }, 500);
+  };
+
+  try { wakeRecog.start(); } catch(e) {
+    setTimeout(() => { if (wakeWordEnabled) spawnWakeListener(); }, 1000);
+  }
+}
+
+function onWakeTriggered() {
+  wakeActive = true;
+  isProcessing = true;
+  if (wakeRecog) { try { wakeRecog.abort(); } catch(e) {} wakeRecog = null; }
+  document.getElementById('wake-dot').classList.remove('listening');
+  document.getElementById('wake-dot').classList.add('active');
+  document.getElementById('wake-label').textContent = 'activated!';
+  setGlobeWake(true);
+
+  // say "yeah?" then listen for command
+  speakText("Yeah?", () => {
+    listenForCommand();
+  });
+}
+
+function listenForCommand() {
+  if (!SR) { resetWakeState(); return; }
+  const cmdRecog = new SR();
+  cmdRecog.continuous = false;
+  cmdRecog.interimResults = false;
+  cmdRecog.lang = 'en-IN';
+
+  cmdRecog.onresult = (e) => {
+    const transcript = e.results[0][0].transcript.trim();
+    if (transcript) {
+      document.getElementById('txt').value = transcript;
+      setGlobeWake(false);
+      sendMsg(transcript); // sendMsg handles resetWakeState at the end
+    } else {
+      resetWakeState();
+    }
+  };
+
+  cmdRecog.onend = () => {
+    // if no result came through
+    if (wakeActive) resetWakeState();
+  };
+
+  cmdRecog.onerror = () => resetWakeState();
+
+  try { cmdRecog.start(); } catch(e) { resetWakeState(); }
+}
+
+function resetWakeState() {
+  wakeActive = false;
+  isProcessing = false;
+  setGlobeWake(false);
+  document.getElementById('wake-dot').classList.remove('active');
+
+  if (wakeWordEnabled) {
+    document.getElementById('wake-dot').classList.add('listening');
+    document.getElementById('wake-label').textContent = 'listening...';
+    setTimeout(spawnWakeListener, 300);
+  }
+}
+
+// ── MANUAL MIC ────────────────────────────────────────────────
+let manualRecog = null;
+let isManualListening = false;
+
+function manualMic() {
+  if (isSpeaking) { stopSpeaking(); return; }
+  if (isManualListening) {
+    if (manualRecog) { try { manualRecog.stop(); } catch(e) {} }
+    stopManualListen();
+    return;
+  }
+  startManualListen();
+}
+
+function startManualListen() {
+  if (!SR) { alert('Use Chrome.'); return; }
+  // pause wake word while manually listening
+  if (wakeRecog) { try { wakeRecog.abort(); } catch(e) {} wakeRecog = null; }
+
+  isManualListening = true;
+  manualRecog = new SR();
+  manualRecog.continuous = false;
+  manualRecog.interimResults = false;
+  manualRecog.lang = 'en-IN';
+
+  manualRecog.onresult = (e) => {
+    const t = e.results[0][0].transcript.trim();
+    document.getElementById('txt').value = t;
+    sendMsg(t);
+  };
+
+  manualRecog.onend = () => stopManualListen();
+  manualRecog.onerror = () => stopManualListen();
+
+  manualRecog.start();
+  document.getElementById('mic-btn').classList.add('active');
+  document.getElementById('mic-btn').textContent = '⏹';
+}
+
+function stopManualListen() {
+  isManualListening = false;
+  document.getElementById('mic-btn').classList.remove('active');
+  document.getElementById('mic-btn').textContent = '🎤';
+  // resume wake word if enabled
+  if (wakeWordEnabled && !wakeActive && !isProcessing) {
+    setTimeout(spawnWakeListener, 400);
+  }
+}
+
+// ── TTS ───────────────────────────────────────────────────────
+function speakText(text, onDone) {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.05; u.pitch = 0.9; u.volume = 1;
+  const voices = window.speechSynthesis.getVoices();
+  const v = voices.find(v => v.name.includes('Google') && v.lang.startsWith('en'))
+    || voices.find(v => v.lang.startsWith('en-IN'))
+    || voices.find(v => v.lang.startsWith('en')) || voices[0];
+  if (v) u.voice = v;
+  u.onstart = () => { isSpeaking = true; setGlobeSpeaking(true); };
+  u.onend   = () => { isSpeaking = false; setGlobeSpeaking(false); if (onDone) onDone(); };
+  u.onerror = () => { isSpeaking = false; setGlobeSpeaking(false); if (onDone) onDone(); };
+  window.speechSynthesis.speak(u);
+}
+
+function stopSpeaking() {
+  window.speechSynthesis.cancel();
+  isSpeaking = false;
+  setGlobeSpeaking(false);
+}
+
+// ── TIMERS ────────────────────────────────────────────────────
+let timerStore = {};
+function startTimer(seconds, label) {
+  const id = Date.now();
+  const end = Date.now() + seconds * 1000;
+  timerStore[id] = { label, end };
+  document.getElementById('timers-panel').classList.add('show');
+  timerStore[id].iv = setInterval(() => {
+    const rem = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+    renderTimers();
+    if (rem === 0) {
+      clearInterval(timerStore[id].iv);
+      delete timerStore[id];
+      if (!Object.keys(timerStore).length) document.getElementById('timers-panel').classList.remove('show');
+      speakText(`Timer done! ${label}`);
+      renderTimers();
+    }
+  }, 1000);
+  renderTimers();
+}
+
+function renderTimers() {
+  const list = document.getElementById('timers-list');
+  const entries = Object.entries(timerStore);
+  if (!entries.length) { list.innerHTML = ''; return; }
+  list.innerHTML = entries.map(([id, t]) => {
+    const rem = Math.max(0, Math.ceil((t.end - Date.now()) / 1000));
+    const m = Math.floor(rem/60), s = rem%60;
+    return `<div class="timer-it"><span class="timer-label">${t.label}</span><span class="timer-time">${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}</span></div>`;
+  }).join('');
+}
+
+// ── CHAT ──────────────────────────────────────────────────────
+const chatEl = document.getElementById('chat-scroll');
+
+function addMsg(role, text) {
+  chatEl.querySelector('.empty')?.remove();
+  const d = document.createElement('div');
+  d.className = `msg ${role==='user'?'user':'bot'}`;
+  d.innerHTML = `<div class="msg-who">${role==='user'?'You':'Jarvis'}</div><div class="bubble">${text}</div>`;
+  chatEl.appendChild(d);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function addTyping() {
+  chatEl.querySelector('.empty')?.remove();
+  const d = document.createElement('div');
+  d.className = 'msg bot'; d.id = 'typing';
+  d.innerHTML = `<div class="msg-who">Jarvis</div><div class="bubble"><div class="typing"><div class="td"></div><div class="td"></div><div class="td"></div></div></div>`;
+  chatEl.appendChild(d);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+function removeTyping() { document.getElementById('typing')?.remove(); }
+
+async function sendMsg(text) {
+  if (!text.trim()) return;
+  document.getElementById('txt').value = '';
+  isProcessing = true;
+
+  // weather intent — fetch before sending
+  const weatherIntent = /weather|temperature|hot|cold|rain|forecast/i.test(text);
+  if (weatherIntent) {
+    try {
+      const city = text.match(/in\s+([a-zA-Z\s]+?)(?:\s*\?|$)/i)?.[1]?.trim() || 'Delhi';
+      const wr = await fetch(`${API}/weather?city=${encodeURIComponent(city)}`);
+      const wd = await wr.json();
+      if (!wd.error) weatherData = wd;
+    } catch(e) {}
+  }
+
+  addMsg('user', text);
+  addTyping();
+
+  try {
+    const res = await fetch(`${API}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, calendarData, notesData, weatherData }),
+    });
+    const data = await res.json();
+    removeTyping();
+
+    if (data.error) {
+      addMsg('bot', `⚠️ ${data.error}`);
+      resetWakeState();
+      return;
+    }
+
+    addMsg('bot', data.reply);
+
+    // handle actions first (sync), then speak
+    if (data.actions?.length) {
+      for (const action of data.actions) {
+        if (action.type === 'open_app') {
+          await fetch(`${API}/open-app`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ app: action.app }) });
+        }
+        if (action.type === 'timer') startTimer(action.seconds, action.label);
+        if (action.type === 'note_saved') loadNotes();
+        if (action.type === 'lights') {
+          await fetch(`${API}/lights`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action: action.action }) });
+        }
+      }
+    }
+
+    // speak reply, then reset so wake word / manual mic works again
+    speakText(data.reply, () => {
+      resetWakeState();
+    });
+
+  } catch (e) {
+    removeTyping();
+    addMsg('bot', '⚠️ Cannot reach server. Is it running?');
+    resetWakeState();
+  }
+}
+
+function doSend() { sendMsg(document.getElementById('txt').value); }
+function onKey(e) { if (e.key === 'Enter') doSend(); }
+
+async function clearChat() {
+  await fetch(`${API}/clear`, { method: 'POST' });
+  chatEl.innerHTML = `<div class="empty">🎙️ Say <span style="color:var(--accent)">"Hello Jarvis"</span> or hit the mic<br/>or type below</div>`;
+}
+
+// ── CALENDAR / NOTES / AUTH ───────────────────────────────────
+async function loadCalendar() {
+  try {
+    const r = await fetch(`${API}/calendar`);
+    const d = await r.json();
+    if (d.events) { calendarData = d.events; renderCal(d.events); }
+  } catch(e) {}
+}
+
+function renderCal(events) {
+  const el = document.getElementById('cal-list');
+  if (!events.length) { el.innerHTML = '<div class="muted-txt">No events this week 🎉</div>'; return; }
+  el.innerHTML = events.map(e => {
+    const t = new Date(e.start).toLocaleString('en-IN', { weekday:'short', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata' });
+    return `<div class="cal-ev"><div class="cal-ev-title">${e.title}</div><div class="cal-ev-time">${t}</div></div>`;
+  }).join('');
+}
+
+async function loadNotes() {
+  try {
+    const r = await fetch(`${API}/notes`);
+    const d = await r.json();
+    notesData = d.notes || [];
+    renderNotes(notesData);
+  } catch(e) {}
+}
+
+function renderNotes(notes) {
+  const el = document.getElementById('notes-list');
+  if (!notes.length) { el.innerHTML = '<div class="muted-txt">Say "note that..." to save</div>'; return; }
+  el.innerHTML = notes.map(n => `<div class="note-it"><div class="note-txt">${n.text}</div><div class="note-ts">${new Date(n.timestamp).toLocaleDateString('en-IN')}</div><button class="note-del" onclick="delNote(${n.id})">✕</button></div>`).join('');
+}
+
+async function delNote(id) {
+  await fetch(`${API}/notes/${id}`, { method: 'DELETE' });
+  loadNotes();
+}
+
+async function checkAuth() {
+  try {
+    const r = await fetch(`${API}/auth/status`);
+    const d = await r.json();
+    if (d.connected) {
+      document.getElementById('g-dot').classList.add('on');
+      document.getElementById('g-btn').textContent = '✓ Google';
+      document.getElementById('g-btn').classList.add('on');
+      loadCalendar();
+    }
+  } catch(e) {}
+}
+
+function connectGoogle() {
+  window.open(`${API}/auth`, '_blank');
+  setTimeout(checkAuth, 3000);
+}
+
+window.speechSynthesis.onvoiceschanged = () => {};
+checkAuth();
+loadNotes();
+setInterval(loadCalendar, 5 * 60 * 1000);
+</script>
+</body>
+</html>
